@@ -52893,9 +52893,6 @@ const char* NetCGIhandler(int iIndex, int iNumParams, char *pcParam[], char *pcV
  8013ffa:	68bb      	ldr	r3, [r7, #8]
  8013ffc:	429a      	cmp	r2, r3
  8013ffe:	dbea      	blt.n	8013fd6 <NetCGIhandler+0xb2>
-//					Serialprint(pcParam[i]);
-//					Serialprint(": ");
-//					print(pcValue[i]);
 				}
 				print("---------------------------------------------------\n");
  8014000:	4846      	ldr	r0, [pc, #280]	; (801411c <NetCGIhandler+0x1f8>)
