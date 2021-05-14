@@ -43,13 +43,11 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define USB_DEBUG 1
-#define ETH_TCP_DEBUG 0
+#define ETH_TCP_DEBUG 1
 
 #define TCP_DEBUG_PORT 6000
-
-#define ADC_BUF_LEN 2
 #define startport 5000
-#define numofports 2
+#define numofports 10
 #define numofclients 3
 
 #define default_interval 500
@@ -130,6 +128,10 @@ int volt[8] = {0};
 struct tcp_pcb *pcb[numofports][numofclients];
 volatile uint8_t accepted_pcb[numofports][numofclients];
 
+#if ETH_TCP_DEBUG
+struct tcp_pcb *debug_pcb;
+uint8_t debug_port_accepted=0;
+#endif
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -149,8 +151,7 @@ void print(char *msg, ...);
 extern uint32_t get_my_ip();
 extern uint32_t get_my_netmask();
 extern uint32_t get_my_gateway();
-void iEthCtrl_UseStaticIP(unsigned long ulIPAddress, unsigned long ulIPSubnetMask, unsigned long ulIPGateway);
-void iEthCtrl_UseDHCP(void);
+
 err_t my_tcp_accept(void *arg, struct tcp_pcb *newpcb, err_t err);
 void my_tcp_init(struct tcp_pcb *pcb, uint16_t port);
 void tcp_send_all();
@@ -165,16 +166,14 @@ void CAN2_Rx();
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // CGI & SSI Related Variables and functions
 // every time you want a new tag in HTML you have to increase the numSSItags and add the tag string inside theSSItags array
-#define numSSItags 10
-char const *theSSItags[numSSItags] = { "red_tag", "blue_tag", "green_tag", "dhcp_status_tag", "ip_tag", "mask_tag", "gw_tag", "dhcp_tag", "static_menu", "adc_tag"};
+#define numSSItags 5
+char const *theSSItags[numSSItags] = {"dhcp_status", "ip", "mask", "gw", "dhcp_box"};
 
 // every time you want a new CGI handler, you have to increase the numCGIhandlers, create an new tCGI variable that states the .cgi and the handler function
 // Also don't forget to add the new tCGI variable to theCGItable table inside myCGIinit function
-#define numCGIhandlers 2
+#define numCGIhandlers 1
 tCGI theCGItable[numCGIhandlers];
-const char* LedCGIhandler(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]);
 const char* NetCGIhandler(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]);
-const tCGI LedCGI = { "/leds.cgi", LedCGIhandler };
 const tCGI NetCGI = { "/net.cgi", NetCGIhandler };
 void myCGIinit(void);
 u16_t mySSIHandler(int iIndex, char *pcInsert, int iInsertLen);
@@ -229,29 +228,23 @@ int main(void)
   MX_LWIP_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buf, ADC_BUF_LEN);
-  // initializing the HTTPd [-HTTPd #2-]
-  httpd_init();
 
-  // initializing CGI  [= CGI #7 =]
+  httpd_init();
   myCGIinit();
-  // initializing SSI [* SSI #6 *]
   mySSIinit();
 
 
   Flash_Read_Data(START_F_ADDRESS_IP, flash_rx_data, 5);
   print("Flash variables:\n");
-  print("%lu\n",flash_rx_data[0]);
-  print("%lu\n",flash_rx_data[1]);
-  print("%lu\n",flash_rx_data[2]);
-  print("%lu\n",flash_rx_data[3]);
-  print("%lu\n",flash_rx_data[4]);
-  flash_data[0] = flash_rx_data[0];
-  flash_data[1] = flash_rx_data[1];
-  flash_data[2] = flash_rx_data[2];
-  flash_data[3] = flash_rx_data[3];
-  flash_data[4] = flash_rx_data[4];
+  for(uint8_t i=0; i<5; i++) {
+	  print("%lu\n",flash_rx_data[i]);
+	  flash_data[i] = flash_rx_data[i];
+  }
   flash_data[0]++;
-  dhcp_en = !(flash_data[1]);
+//  dhcp_en = (0 ? (flash_data[1] & 0x0001)==1 : 1);
+  if((flash_data[1] & 0x0001) == 1) {
+	  dhcp_en = 0;
+  }
   Flash_Write_Data(START_F_ADDRESS_IP, flash_data, 5);
 
   for(uint8_t i=0; i<numofports; i++) {
@@ -259,6 +252,9 @@ int main(void)
 		  my_tcp_init(pcb[i][j], startport + i);
 	  }
   }
+#if ETH_TCP_DEBUG
+  my_tcp_init(debug_pcb, TCP_DEBUG_PORT);
+#endif
 
   ADS8688_Init(&ads, &hspi3, SPI3_CS_GPIO_Port, SPI3_CS_Pin);
 
@@ -304,7 +300,6 @@ int main(void)
 
 //		  Print_PHY_Registers();
 
-		  unsigned long now = HAL_GetTick();
 		  ADS_Read_All_Raw(&ads, ads_data);
 		  print("-----------------------------------------------------------\n");
 		  for(int i=0; i<8; i++) {;
@@ -313,8 +308,6 @@ int main(void)
 			  print("CHN_%d: %d.%d volt\n", i, volt[i]/100000000, volt[i]%100000000);
 
 		  }
-		  now = HAL_GetTick() - now;
-		  print("total: %lu ms\n", now);
 		  print("-----------------------------------------------------------\n");
 
 		  tcp_send_all();
@@ -749,10 +742,16 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void tcp_send_all() {
 	  for(uint8_t i=0; i<numofports; i++) {
+		  char buf_out[30];
+		  if(i<8) {
+			  sprintf(buf_out, "%d.%d\n", volt[i]/100000000, volt[i]%100000000);
+		  }
+		  else {
+			  sprintf(buf_out, "this is port: %d\n", 5009);
+		  }
 		  for(uint8_t j=0; j<numofclients; j++) {
 			  if(accepted_pcb[i][j]) {
-				  char buf_out[100];
-				  sprintf(buf_out, "Hello world: %d conn %d", startport + i, j+1);
+
 				  if( pcb[i][j] != NULL && pcb[i][j]->state == ESTABLISHED) {
 					  if(tcp_write(pcb[i][j], &buf_out, strlen(buf_out)+1, TCP_WRITE_FLAG_COPY) != ERR_OK) {
 						  print("----------- FAIL: write did not return ok\n");
@@ -774,122 +773,55 @@ void tcp_send_all() {
 }
 
 const char* NetCGIhandler(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
-    if (iIndex != 0) {
-		if (strcmp(pcParam[0], "dhcp") == 0) {
-			if (strcmp(pcValue[0], "0") == 0) { // submitted unchecked
-				request_static = 1;
-			}
-			else if (strcmp(pcValue[0], "1") == 0 && !dhcp_en) { // else if we check the box and we had the dhcp disabled, we enable it
+	int offset = 0;
+	if (strcmp(pcParam[0], "dhcp") == 0) {
+		offset = 1;
+		if (strcmp(pcValue[0], "1") == 0) { // submitted checked
+			if(!dhcp_en) { 	// this means that dhcp was disabled and we want to enable it
 				print("---------------------------------------------------\n");
 				print(" -Got request to enable DHCP\n");
-	//		            request_static = 0;
 				flash_data[1] = 0;
 				Flash_Write_Data(START_F_ADDRESS_IP, flash_data, 5);
 				NVIC_SystemReset();
-					// here you enable the dhcp
-			}
-			else {  // submitted unchecked but dhcp is still on
-				request_static = 0;
 			}
 		}
-		else if (strcmp(pcParam[0], "ip_1") == 0) {
-			if(iNumParams >= 12) {																	// NOT SURE IF NEDDED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-				print("---------------------------------------------------\n");
-				print(" -Got request to change network setting to:\n");
+	}
+	if(strcmp(pcParam[0+offset], "ip_1") == 0 && !offset) {
+		if(iNumParams >= 12) {																	// NOT SURE IF NEDDED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			print("---------------------------------------------------\n");
+			print(" -Got request to change network setting to:\n");
 
-				for(int i = 0; i < iNumParams; i++) {
-					print("%s: %s", pcParam[i], pcValue[i]);
-				}
-				print("---------------------------------------------------\n");
-
-				flash_data[1] = 1;
-				flash_data[2] = (uint32_t)(atoi(pcValue[0])<<0) + (uint32_t)(atoi(pcValue[1])<<8) + (uint32_t)(atoi(pcValue[2])<<16) + (uint32_t)(atoi(pcValue[3])<<24);
-				flash_data[3] = (uint32_t)(atoi(pcValue[4])<<0) + (uint32_t)(atoi(pcValue[5])<<8) + (uint32_t)(atoi(pcValue[6])<<16) + (uint32_t)(atoi(pcValue[7])<<24);
-				flash_data[4] = (uint32_t)(atoi(pcValue[8])<<0) + (uint32_t)(atoi(pcValue[9])<<8) + (uint32_t)(atoi(pcValue[10])<<16) + (uint32_t)(atoi(pcValue[11])<<24);
-				Flash_Write_Data(START_F_ADDRESS_IP, flash_data, 5);
-				NVIC_SystemReset();
+			for(int i = 0; i < iNumParams-offset; i++) {
+				print("%s: %s\n", pcParam[i+offset], pcValue[i+offset]);
 			}
-			else {
-				print(" -Something went wrong with the parameters...they are less than 11\n");
-			}
+			print("---------------------------------------------------\n");
 
+			flash_data[1] = 1;
+			flash_data[2] = (uint32_t)(atoi(pcValue[0+offset])<<0) + (uint32_t)(atoi(pcValue[1+offset])<<8) + (uint32_t)(atoi(pcValue[2+offset])<<16) + (uint32_t)(atoi(pcValue[3+offset])<<24);
+			flash_data[3] = (uint32_t)(atoi(pcValue[4+offset])<<0) + (uint32_t)(atoi(pcValue[5+offset])<<8) + (uint32_t)(atoi(pcValue[6+offset])<<16) + (uint32_t)(atoi(pcValue[7+offset])<<24);
+			flash_data[4] = (uint32_t)(atoi(pcValue[8+offset])<<0) + (uint32_t)(atoi(pcValue[9+offset])<<8) + (uint32_t)(atoi(pcValue[10+offset])<<16) + (uint32_t)(atoi(pcValue[11+offset])<<24);
+			Flash_Write_Data(START_F_ADDRESS_IP, flash_data, 5);
+			NVIC_SystemReset();
 		}
-    }
-    return "/index.shtml";
-}
-const char* LedCGIhandler(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+		else {
+			print(" -Something went wrong with the parameters...they are less than 11\n");
+		}
 
-    if (iIndex == 0) { // happens when there is only a ? after the url!  NOT SURE
-        //turning the LED lights off
-        HAL_GPIO_WritePin(E6_GPIO_Port, E6_Pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(WARN_GPIO_Port, WARN_Pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(ERR_GPIO_Port, ERR_Pin, GPIO_PIN_RESET);
-        red_led=0;
-        blue_led=0;
-        green_led=0;
-    }
-    for (int i = 0; i < iNumParams; i++) {
-
-        if (strcmp(pcParam[i], "led") == 0) {
-
-            if (strcmp(pcValue[i], "1") == 0) {
-                HAL_GPIO_WritePin(E6_GPIO_Port, E6_Pin, GPIO_PIN_SET);
-                red_led=1;
-            }
-            else if (strcmp(pcValue[i], "2") == 0) {
-                HAL_GPIO_WritePin(WARN_GPIO_Port, WARN_Pin, GPIO_PIN_SET);
-                blue_led=1;
-            }
-            else if (strcmp(pcValue[i], "3") == 0) {
-            	HAL_GPIO_WritePin(ERR_GPIO_Port, ERR_Pin, GPIO_PIN_SET);
-            	green_led=1;
-            }
-        }
-    }
-    // the extension .shtml for SSI to work
-    return "/led.shtml";
-
+	}
+	return "/index.shtml";
 }
 
 void myCGIinit(void) {
     //add LED control CGI to the table
-    theCGItable[0] = LedCGI;
-    theCGItable[1] = NetCGI;
+    theCGItable[0] = NetCGI;
     //give the table to the HTTP server
     http_set_cgi_handlers(theCGItable, numCGIhandlers);
 }
+
 u16_t mySSIHandler(int iIndex, char *pcInsert, int iInsertLen) {
 	char *tmp;
 	tmp = "";
-	if (iIndex == 0) {
-		if (!red_led) {
-			tmp = "<input value=\"1\" name=\"led\" type=\"checkbox\">";
-		}
-		else {
-			tmp = "<input value=\"1\" name=\"led\" type=\"checkbox\" checked>";
-		}
-	}
-
-	else if (iIndex == 1) {
-		if (!blue_led) {
-			tmp = "<input value=\"2\" name=\"led\" type=\"checkbox\">";
-		}
-
-		else {
-			tmp = "<input value=\"2\" name=\"led\" type=\"checkbox\" checked>";
-		}
-
-	}
-	else if (iIndex == 2) {
-		if (!green_led) {
-			tmp = "<input value=\"3\" name=\"led\" type=\"checkbox\">";
-		}
-		else {
-			tmp ="<input value=\"3\" name=\"led\" type=\"checkbox\" checked>";
-		}
-
-	}
-	else if (iIndex == 3) {	// dhcp status
+	if (iIndex == 0) {// dhcp status
 		if(dhcp_en) {
 			tmp = "ON";
 		}
@@ -898,51 +830,44 @@ u16_t mySSIHandler(int iIndex, char *pcInsert, int iInsertLen) {
 			request_static = 1;
 		}
 	}
-	else if (iIndex == 4) {	// ip address
+	else if (iIndex == 1) {	// ip address
 		my_ip = get_my_ip();
 		char tmp1[50];
 		sprintf(tmp1, "%lu.%lu.%lu.%lu",(my_ip & 0xff), ((my_ip >> 8) & 0xff), ((my_ip >> 16) & 0xff), (my_ip >> 24));
 		strcpy(pcInsert, tmp1);
 		return strlen(tmp1);
 	}
-	else if (iIndex == 5) {	// subnet mask
+	else if (iIndex == 2) {	// subnet mask
 		my_ip = get_my_netmask();
 		char tmp1[50];
 		sprintf(tmp1, "%lu.%lu.%lu.%lu",(my_net & 0xff), ((my_net >> 8) & 0xff), ((my_net >> 16) & 0xff), (my_net >> 24));
 		strcpy(pcInsert, tmp1);
 		return strlen(tmp1);
 	}
-	else if (iIndex == 6) {	// default gateway
+	else if (iIndex == 3) {	// default gateway
 		my_ip = get_my_gateway();
 		char tmp1[50];
 		sprintf(tmp1, "%lu.%lu.%lu.%lu",(my_gw & 0xff), ((my_gw >> 8) & 0xff), ((my_gw >> 16) & 0xff), (my_gw >> 24));
 		strcpy(pcInsert, tmp1);
 		return strlen(tmp1);
 	}
-	else if (iIndex == 7) {	// dhcp checkbox
-		if (request_static) {
-			tmp = "<input value=\"1\" name=\"dhcp\" onchange=\"this.form.submit()\" type=\"checkbox\">";
+	else if (iIndex == 4) {	// dhcp checkbox
+		if (dhcp_en) {
+			tmp = "<input value=\"1\" name=\"dhcp\" type=\"checkbox\" checked>";
 		}
 		else {
-			tmp ="<input value=\"1\" name=\"dhcp\"  onchange=\"this.form.submit()\" type=\"checkbox\" checked> <input value=\"0\" name=\"dhcp\" type=\"hidden\">";
+			tmp ="<input value=\"1\" name=\"dhcp\" type=\"checkbox\">";
 		}
 	}
-	else if (iIndex == 8) {	// static ip menu
-		if (request_static) {
-//			HAL_Delay(600);
-			tmp = "  Select your settings and press Submit order to get static address<br><form method=\"get\" action=\"/net.cgi\"> IP Address: <input type=\"text\" name=\"ip_1\" value=\"192\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"ip_2\" value=\"168\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"ip_3\" value=\"1\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"ip_4\" value=\"20\" maxlength=\"3\" size=\"1\"><br> Subnet Mask: <input type=\"text\" name=\"net_1\" value=\"255\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"net_2\" value=\"255\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"net_3\" value=\"255\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"net_4\" value=\"0\" maxlength=\"3\" size=\"1\"><br> Default Gateway: <input type=\"text\" name=\"gw_1\" value=\"192\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"gw_2\" value=\"168\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"gw_3\" value=\"1\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"gw_4\" value=\"1\" maxlength=\"3\" size=\"1\"><br> <input value=\"Submit\" type=\"submit\"></form>";
-		}
-		else {
-			tmp = "";
-		}
-
-	}
-	else if (iIndex == 9) {	// adc value
-		char tmp1[50];
-		sprintf(tmp1, "%u", adc_buf[0]);
-		strcpy(pcInsert, tmp1);
-		return strlen(tmp1);
-	}
+//	else if (iIndex == 5) {	// static ip menu
+//		if (request_static) {
+////			HAL_Delay(600);
+//			tmp = "  Select your settings and press Submit order to get static address<br><form method=\"get\" action=\"/net.cgi\"> IP Address: <input type=\"text\" name=\"ip_1\" value=\"192\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"ip_2\" value=\"168\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"ip_3\" value=\"1\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"ip_4\" value=\"20\" maxlength=\"3\" size=\"1\"><br> Subnet Mask: <input type=\"text\" name=\"net_1\" value=\"255\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"net_2\" value=\"255\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"net_3\" value=\"255\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"net_4\" value=\"0\" maxlength=\"3\" size=\"1\"><br> Default Gateway: <input type=\"text\" name=\"gw_1\" value=\"192\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"gw_2\" value=\"168\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"gw_3\" value=\"1\" maxlength=\"3\" size=\"1\">. <input type=\"text\" name=\"gw_4\" value=\"1\" maxlength=\"3\" size=\"1\"><br> <input value=\"Submit\" type=\"submit\"></form>";
+//		}
+//		else {
+//			tmp = "";
+//		}
+//	}
 	else {
 		tmp = "";
 	}
@@ -1028,7 +953,13 @@ err_t my_tcp_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
     tcp_poll(newpcb, NULL, 4);
     uint16_t port = newpcb->local_port;
     print("+++++ ACCEPTED  on port: %u", port);
-
+#if ETH_TCP_DEBUG
+    if(port == TCP_DEBUG_PORT && !debug_port_accepted) {
+    	debug_port_accepted = 1;
+    	debug_pcb = newpcb;
+    	return ERR_OK;
+    }
+#endif
 
     uint16_t index = port % startport;
     for(uint8_t i=0; i<numofclients; i++) {
@@ -1111,8 +1042,20 @@ void print(char *msg, ...) {
 	HAL_UART_Transmit(&huart2, (uint8_t *)buff, strlen(buff), 10);
 #endif
 #if ETH_TCP_DEBUG
-	// tcp write and output
-
+	 if(debug_port_accepted) {
+		  if( debug_pcb != NULL && debug_pcb->state == ESTABLISHED) {
+			  if(tcp_write(debug_pcb, &buff, strlen(buff)+1, TCP_WRITE_FLAG_COPY) != ERR_OK) {
+				  // something went wrong...
+			  }
+			  else {
+				  tcp_output(debug_pcb);
+			  }
+		  }
+		  else {
+			  tcp_close(debug_pcb);
+			  debug_port_accepted = 0;
+		  }
+	 }
 #endif
 }
 /* USER CODE END 4 */

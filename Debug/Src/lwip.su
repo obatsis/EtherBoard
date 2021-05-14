@@ -2,5 +2,5 @@ lwip.c:49:10:get_my_ip	16	static
 lwip.c:54:10:get_my_netmask	16	static
 lwip.c:59:10:get_my_gateway	16	static
 lwip.c:65:6:iEthCtrl_UseStaticIP	24	static
-lwip.c:120:6:MX_LWIP_Init	24	static
-lwip.c:177:6:MX_LWIP_Process	8	static
+lwip.c:90:6:MX_LWIP_Init	24	static
+lwip.c:147:6:MX_LWIP_Process	8	static

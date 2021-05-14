@@ -66,9 +66,9 @@ void iEthCtrl_UseStaticIP(unsigned long ulIPAddress, unsigned long ulIPSubnetMas
       // Check, if the network connection is up and DHCP is activated
 
 
-//	if (netif_is_link_up(&gnetif) && (netif_dhcp_data(&gnetif) != NULL)) {
-//		dhcp_release(&gnetif);// Release the DHCP lease (it already calls netif_set_down() function)
-//		dhcp_stop(&gnetif); // Stop the dhcp service
+	if (netif_is_link_up(&gnetif) && (netif_dhcp_data(&gnetif) != NULL)) {
+		dhcp_release(&gnetif);// Release the DHCP lease (it already calls netif_set_down() function)
+		dhcp_stop(&gnetif); // Stop the dhcp service
 		netif_set_down(&gnetif); // set the interface down
 
 		ipaddr.addr = ulIPAddress;
@@ -80,38 +80,8 @@ void iEthCtrl_UseStaticIP(unsigned long ulIPAddress, unsigned long ulIPSubnetMas
 
 
 		netif_set_up(&gnetif); // Bring the interface up again
-//	}
+	}
 }
-
-//void iEthCtrl_UseDHCP(void) {
-//
-//      IP4_ADDR(&ipaddr, 0, 0, 0, 0);
-//
-//      IP4_ADDR(&netmask, 0, 0, 0, 0);
-//
-//      IP4_ADDR(&gw, 0, 0, 0, 0);
-//
-//      // Check, if the network connection is up and DHCP is NOT activated
-//
-////      if (netif_is_link_up(&gnetif) && !(gnetif.flags & NETIF_FLAG_DHCP)) {
-////    	  if (netif_is_link_up(&gnetif) && (netif_dhcp_data(&gnetif) == NULL)) {
-//      if(netif_is_link_up(&gnetif)) {
-//            // Bring the current interface down
-//            netif_set_down(&gnetif);
-//
-//            // Set the IP addresses to "0.0.0.0" so the DHCP server can send a reply.
-//
-//            // Otherwise the previous static IP might be out of the network class of the DHCP server
-//
-//            netif_set_addr(&gnetif, &ipaddr, &netmask, &gw);
-////
-//            dhcp_network_changed(&gnetif);
-//
-//            netif_set_up(&gnetif);
-//            dhcp_start(&gnetif); // Start DHCP negotiation
-//
-//      }
-//}
 /* USER CODE END 2 */
 
 /**
