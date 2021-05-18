@@ -241,7 +241,6 @@ int main(void)
 	  flash_data[i] = flash_rx_data[i];
   }
   flash_data[0]++;
-//  dhcp_en = (0 ? (flash_data[1] & 0x0001)==1 : 1);
   if((flash_data[1] & 0x0001) == 1) {
 	  dhcp_en = 0;
   }
@@ -744,10 +743,10 @@ void tcp_send_all() {
 	  for(uint8_t i=0; i<numofports; i++) {
 		  char buf_out[30];
 		  if(i<8) {
-			  sprintf(buf_out, "%d.%d\n", volt[i]/100000000, volt[i]%100000000);
+			  sprintf(buf_out, "%d.%d\r", volt[i]/100000000, volt[i]%100000000);
 		  }
 		  else {
-			  sprintf(buf_out, "this is port: %d\n", 5009);
+			  sprintf(buf_out, "this is port: %d\n", 5000 + i);
 		  }
 		  for(uint8_t j=0; j<numofclients; j++) {
 			  if(accepted_pcb[i][j]) {
@@ -755,6 +754,8 @@ void tcp_send_all() {
 				  if( pcb[i][j] != NULL && pcb[i][j]->state == ESTABLISHED) {
 					  if(tcp_write(pcb[i][j], &buf_out, strlen(buf_out)+1, TCP_WRITE_FLAG_COPY) != ERR_OK) {
 						  print("----------- FAIL: write did not return ok\n");
+						  tcp_close(pcb[i][j]);
+						  accepted_pcb[i][j] = 0;
 					  }
 					  else {
 						  tcp_output(pcb[i][j]);
