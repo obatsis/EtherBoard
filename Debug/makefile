@@ -46,7 +46,7 @@ all: EtherBoard_V1.elf secondary-outputs
 
 # Tool invocations
 EtherBoard_V1.elf: $(OBJS) $(USER_OBJS) C:\Users\lenovo\Documents\STM32CubeIDE\EtherBoard_V1\STM32F407VGTX_FLASH.ld
-	arm-none-eabi-gcc -o "EtherBoard_V1.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\lenovo\Documents\STM32CubeIDE\EtherBoard_V1\STM32F407VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="EtherBoard_V1.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "EtherBoard_V1.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\lenovo\Documents\STM32CubeIDE\EtherBoard_V1\STM32F407VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="EtherBoard_V1.map" -Wl,--gc-sections -static -u _printf_float --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

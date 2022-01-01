@@ -246,7 +246,7 @@ static void low_level_init(struct netif *netif)
 /* USER CODE END PHY_PRE_CONFIG */
   
 
-/* USER CODE BEGIN PHY_POST_CONFIG */
+/* USER CODE BEGIN PHY_POST_CONFIG */ 
   uint32_t regvalue = 0;
   // configure RJ45 leds (Control register address: 0x19)
   HAL_ETH_ReadPHYRegister(&heth, 0x19, &regvalue);

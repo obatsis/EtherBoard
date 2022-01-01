@@ -29,22 +29,23 @@ uint8_t ADS8688_Init(ADS8688 *ads, SPI_HandleTypeDef *spiHandle, GPIO_TypeDef *c
 	// set all channels ranges(page 57)
 	// 0x05 -> Input range is set to 0 to 2.5 x VREF (for VREF=5 volts, this means 0-10 volts range)
 	// 0x06 -> Input range is set to 0 to 1.25 x VREF (for VREF=5 volts, this means 0-5 volts range)
+	// internal Vref is 4.096 Volts so the range is not actually 0-5 and 0-10 but something less
 	ads_data[0] = 0x06;
 	state += ADS_Prog_Write(ads, CHN_0_RANGE, ads_data);
 	HAL_Delay(10);
 	ads_data[0] = 0x06;
 	state += ADS_Prog_Write(ads, CHN_1_RANGE, ads_data);
 	HAL_Delay(10);
-	ads_data[0] = 0x05;
+	ads_data[0] = 0x06;
 	state += ADS_Prog_Write(ads, CHN_2_RANGE, ads_data);
 	HAL_Delay(10);
-	ads_data[0] = 0x05;
+	ads_data[0] = 0x06;
 	state += ADS_Prog_Write(ads, CHN_3_RANGE, ads_data);
 	HAL_Delay(10);
-	ads_data[0] = 0x05;
+	ads_data[0] = 0x06;
 	state += ADS_Prog_Write(ads, CHN_4_RANGE, ads_data);
 	HAL_Delay(10);
-	ads_data[0] = 0x05;
+	ads_data[0] = 0x06;
 	state += ADS_Prog_Write(ads, CHN_5_RANGE, ads_data);
 	HAL_Delay(10);
 	ads_data[0] = 0x06;

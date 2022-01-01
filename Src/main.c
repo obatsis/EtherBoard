@@ -85,6 +85,8 @@ CAN_HandleTypeDef hcan2;
 
 SPI_HandleTypeDef hspi3;
 
+TIM_HandleTypeDef htim6;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
@@ -122,11 +124,13 @@ __IO uint32_t flash_rx_data[5];
 ADS8688 ads;
 uint16_t ads_data[8];
 float volt_helper = 0;
+float ads_volt[8] = {0};
 int volt[8] = {0};
 
 // tcp variables
 struct tcp_pcb *pcb[numofports][numofclients];
 volatile uint8_t accepted_pcb[numofports][numofclients];
+volatile uint8_t postPorts=0;
 
 #if ETH_TCP_DEBUG
 struct tcp_pcb *debug_pcb;
@@ -146,7 +150,9 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
+
 void print(char *msg, ...);
 extern uint32_t get_my_ip();
 extern uint32_t get_my_netmask();
@@ -225,6 +231,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_USART6_UART_Init();
   MX_ADC1_Init();
+  MX_TIM6_Init();
   MX_LWIP_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buf, ADC_BUF_LEN);
@@ -262,12 +269,19 @@ int main(void)
   HAL_GPIO_WritePin(IP_GPIO_Port, IP_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(RUN_GPIO_Port, RUN_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(ERR_GPIO_Port, ERR_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(D_IN1_GPIO_Port, D_IN1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(D_IN2_GPIO_Port, D_IN2_Pin, GPIO_PIN_RESET);
   HAL_Delay(1000);
   HAL_GPIO_WritePin(E6_GPIO_Port, E6_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(WARN_GPIO_Port, WARN_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(IP_GPIO_Port, IP_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(RUN_GPIO_Port, RUN_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(ERR_GPIO_Port, ERR_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(D_IN1_GPIO_Port, D_IN1_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(D_IN2_GPIO_Port, D_IN2_Pin, GPIO_PIN_SET);
+
+
+  HAL_TIM_Base_Start_IT(&htim6);
 
   /* USER CODE END 2 */
 
@@ -297,21 +311,23 @@ int main(void)
 		  my_gw = get_my_gateway();
 		  print("GATE = %lu.%lu.%lu.%lu\n",(my_gw & 0xff), ((my_gw >> 8) & 0xff), ((my_gw >> 16) & 0xff), (my_gw >> 24));
 
-//		  Print_PHY_Registers();
 
-		  ADS_Read_All_Raw(&ads, ads_data);
-		  print("-----------------------------------------------------------\n");
-		  for(int i=0; i<8; i++) {;
-			  volt_helper = ((float)ads_data[i])*10.0/4095.0;
-			  volt[i] = (int)(volt_helper*100000000);
-			  print("CHN_%d: %d.%d volt\n", i, volt[i]/100000000, volt[i]%100000000);
-
-		  }
-		  print("-----------------------------------------------------------\n");
-
-		  tcp_send_all();
 		  previous = current;
 		  previous+=interval;
+	  }
+
+	  if(postPorts) {
+		  postPorts = 0;
+		  ADS_Read_All_Raw(&ads, ads_data);
+
+		  // convert raw measurements to voltages
+		  for(int i=0; i<8; i++) {
+			  ads_volt[i] = ((float)ads_data[i])*ADS_0_5_VOLTS/4096.0;	// 0-5 volt channels (see ads init function)
+			  volt[i] = (int)(ads_volt[i]*100000000);
+		  }
+
+		  tcp_send_all();
+
 	  }
   }
   /* USER CODE END 3 */
@@ -519,6 +535,44 @@ static void MX_SPI3_Init(void)
   /* USER CODE BEGIN SPI3_Init 2 */
 
   /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
+  * @brief TIM6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM6_Init(void)
+{
+
+  /* USER CODE BEGIN TIM6_Init 0 */
+
+  /* USER CODE END TIM6_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM6_Init 1 */
+
+  /* USER CODE END TIM6_Init 1 */
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 8400-1;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 5000-1;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM6_Init 2 */
+
+  /* USER CODE END TIM6_Init 2 */
 
 }
 
@@ -743,10 +797,10 @@ void tcp_send_all() {
 	  for(uint8_t i=0; i<numofports; i++) {
 		  char buf_out[30];
 		  if(i<8) {
-			  sprintf(buf_out, "%d.%d\r", volt[i]/100000000, volt[i]%100000000);
+			  sprintf(buf_out, "%.2f\r", ads_volt[i]);
 		  }
 		  else {
-			  sprintf(buf_out, "this is port: %d\n", 5000 + i);
+			  sprintf(buf_out, "this is port: %d\n", (5000 + i));
 		  }
 		  for(uint8_t j=0; j<numofclients; j++) {
 			  if(accepted_pcb[i][j]) {
@@ -754,8 +808,8 @@ void tcp_send_all() {
 				  if( pcb[i][j] != NULL && pcb[i][j]->state == ESTABLISHED) {
 					  if(tcp_write(pcb[i][j], &buf_out, strlen(buf_out)+1, TCP_WRITE_FLAG_COPY) != ERR_OK) {
 						  print("----------- FAIL: write did not return ok\n");
-						  tcp_close(pcb[i][j]);
-						  accepted_pcb[i][j] = 0;
+//						  tcp_close(pcb[i][j]);
+//						  accepted_pcb[i][j] = 0;
 					  }
 					  else {
 						  tcp_output(pcb[i][j]);
@@ -1033,6 +1087,7 @@ void Print_PHY_Registers() {
 	print("EDCR: "BYTE_TO_BIN_PAT" "BYTE_TO_BIN_PAT"      %#.4X\n", BYTE_TO_BIN(phyreg>>8), BYTE_TO_BIN(phyreg), phyreg);
 	print("-----------------------------------------------------------\n");
 }
+
 void print(char *msg, ...) {
 
 	char buff[100];
@@ -1058,6 +1113,13 @@ void print(char *msg, ...) {
 		  }
 	 }
 #endif
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+
+	if(htim == &htim6) {
+		postPorts = 1;
+	}
 }
 /* USER CODE END 4 */
 

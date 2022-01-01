@@ -50,6 +50,11 @@
 
 #define CHNS_NUM_READ 8			// the number of channel you want to get the raw data (you also have to adjust the AUTO_SEQ_EN register value to match with the number of channel you like to read)
 
+#define ADS_VREF 4.096f			// if the internal voltage reference is selected
+
+#define ADS_0_5_VOLTS (1.25* ADS_VREF)
+#define ADS_0_10_VOLTS (25* ADS_VREF)
+
 typedef struct {
 
 	/* SPI */
